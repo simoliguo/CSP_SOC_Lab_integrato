@@ -1,0 +1,33 @@
+---
+- name: Deploy Wazuh All-in-One SIEM
+  hosts: siem
+  become: yes
+
+  tasks:
+    - name: Installa prerequisiti di sistema
+      apt:
+        update_cache: yes
+        name:
+          - curl
+          - tar
+          - unzip
+        state: present
+
+    - name: Scarica script di installazione ufficiale Wazuh 4.x
+      get_url:
+        url: https://packages.wazuh.com/4.9/wazuh-install.sh
+        dest: /root/wazuh-install.sh
+        mode: '0755'
+
+    - name: Esegui installazione All-in-One di Wazuh (richiede 5-10 minuti)
+      shell: bash /root/wazuh-install.sh -a -i | tee /root/wazuh-install-output.log
+      args:
+        creates: /var/ossec/bin/wazuh-control
+
+    - name: Estrai la password admin dalla installazione
+      shell: 'grep -A 1 "User: admin" /root/wazuh-install-output.log || true'
+      register: wazuh_creds
+
+    - name: Mostra credenziali Dashboard Wazuh
+      debug:
+        var: wazuh_creds.stdout_lines

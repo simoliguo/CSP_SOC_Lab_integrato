@@ -409,3 +409,35 @@ resource "azurerm_linux_virtual_machine" "vm_wazuh" {
     version   = "latest"
   }
 }
+# ------------------------------------------------------------------------------
+# 7. GENERAZIONE AUTOMATICA INVENTARIO ANSIBLE
+# ------------------------------------------------------------------------------
+resource "local_file" "ansible_inventory" {
+  content = <<-EOT
+    [waf]
+    vm-waf-modsecurity ansible_host=${azurerm_linux_virtual_machine.vm_waf.public_ip_address}
+
+    [siem]
+    vm-siem-wazuh ansible_host=${azurerm_linux_virtual_machine.vm_wazuh.public_ip_address}
+
+    [targets]
+    vm-target-juiceshop ansible_host=10.0.2.4
+
+    [all:vars]
+    ansible_user=${var.admin_username}
+    ansible_ssh_private_key_file=../terraform/id_rsa
+    ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_python_interpreter=/usr/bin/python3
+
+    [targets:vars]
+    ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ProxyCommand="ssh -W %h:%p -q -i ../terraform/id_rsa -o StrictHostKeyChecking=no ${var.admin_username}@${azurerm_linux_virtual_machine.vm_waf.public_ip_address}"'
+  EOT
+
+  filename = "${path.module}/../ansible/inventory.ini"
+
+  depends_on = [
+    azurerm_linux_virtual_machine.vm_waf,
+    azurerm_linux_virtual_machine.vm_wazuh,
+    azurerm_linux_virtual_machine.vm_juiceshop
+  ]
+}

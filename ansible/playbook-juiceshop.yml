@@ -1,0 +1,45 @@
+---
+- name: Deploy OWASP Juice Shop & Wazuh Agent
+  hosts: targets
+  become: yes
+  vars:
+    wazuh_manager_ip: "10.0.1.5"
+
+  tasks:
+    - name: Update apt cache e installa prerequisiti
+      apt:
+        update_cache: yes
+        name:
+          - docker.io
+          - curl
+          - apt-transport-https
+          - lsb-release
+          - gnupg
+        state: present
+
+    - name: Avvia e abilita Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Avvia container OWASP Juice Shop
+      shell: |
+        docker rm -f juice-shop || true
+        docker run -d --restart always --name juice-shop -p 3000:3000 bkimminich/juice-shop
+
+    - name: Scarica e installa Wazuh Agent
+      shell: |
+        curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+        echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | tee /etc/apt/sources.list.d/wazuh.list
+        apt-get update
+        WAZUH_MANAGER="{{ wazuh_manager_ip }}" apt-get install -y wazuh-agent=4.9.2-1
+      args:
+        creates: /var/ossec/bin/wazuh-control
+
+    - name: Avvia e abilita Wazuh Agent
+      systemd:
+        daemon_reload: yes
+        name: wazuh-agent
+        state: started
+        enabled: yes

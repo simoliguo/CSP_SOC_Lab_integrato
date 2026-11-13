@@ -1,0 +1,74 @@
+---
+- name: Deploy Nginx + ModSecurity WAF (Docker) & Wazuh Agent
+  hosts: waf
+  become: yes
+  vars:
+    backend_url: "http://10.0.2.4:3000"
+    wazuh_manager_ip: "10.0.1.5"
+
+  tasks:
+    - name: Installa Docker e prerequisiti
+      apt:
+        update_cache: yes
+        name:
+          - docker.io
+          - curl
+          - gnupg
+        state: present
+
+    - name: Avvia e abilita Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Crea directory per i log del WAF
+      file:
+        path: /var/log/modsecurity
+        state: directory
+        mode: '0777'
+
+    - name: Avvia container OWASP ModSecurity CRS + Nginx
+      shell: |
+        docker rm -f waf-modsecurity || true
+        docker run -d --restart always --name waf-modsecurity \
+          -p 80:8080 \
+          -e BACKEND={{ backend_url }} \
+          -e SERVER_NAME=_ \
+          -e BLOCKING_PARANOIA=1 \
+          -e MODSEC_RULE_ENGINE=On \
+          -e ACCESSLOG=/var/log/nginx/access.log \
+          -e ERRORLOG=/var/log/nginx/error.log \
+          -e MODSEC_AUDIT_LOG=/var/log/nginx/modsec_audit.log \
+          -v /var/log/modsecurity:/var/log/nginx \
+          owasp/modsecurity-crs:nginx
+
+    - name: Installa Wazuh Agent
+      shell: |
+        curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+        echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | tee /etc/apt/sources.list.d/wazuh.list
+        apt-get update
+        WAZUH_MANAGER="{{ wazuh_manager_ip }}" apt-get install -y wazuh-agent=4.9.2-1
+      args:
+        creates: /var/ossec/bin/wazuh-control
+
+    - name: Configura Wazuh Agent per leggere i log di ModSecurity/Nginx
+      blockinfile:
+        path: /var/ossec/etc/ossec.conf
+        insertbefore: "</ossec_config>"
+        block: |
+          <localfile>
+            <log_format>syslog</log_format>
+            <location>/var/log/modsecurity/error.log</location>
+          </localfile>
+          <localfile>
+            <log_format>syslog</log_format>
+            <location>/var/log/modsecurity/modsec_audit.log</location>
+          </localfile>
+
+    - name: Riavvia Wazuh Agent
+      systemd:
+        daemon_reload: yes
+        name: wazuh-agent
+        state: restarted
+        enabled: yes
