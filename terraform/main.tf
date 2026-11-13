@@ -128,6 +128,19 @@ resource "azurerm_network_security_group" "nsg_waf" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+
+  # Regola Outbound esplicita verso SIEM Wazuh
+  security_rule {
+    name                       = "Allow-Wazuh-Agent-Outbound"
+    priority                   = 1001
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_ranges    = ["1514", "1515"]
+    source_address_prefix      = "*"
+    destination_address_prefix = "10.0.1.5/32"
+  }
 }
 
 resource "azurerm_network_security_group" "nsg_wazuh" {
@@ -212,8 +225,20 @@ resource "azurerm_network_security_group" "nsg_juiceshop" {
     source_address_prefix      = "10.0.0.0/16"
     destination_address_prefix = "*"
   }
-}
 
+  # Regola Outbound esplicita verso SIEM Wazuh
+  security_rule {
+    name                       = "Allow-Wazuh-Agent-Outbound"
+    priority                   = 1001
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_ranges    = ["1514", "1515"]
+    source_address_prefix      = "*"
+    destination_address_prefix = "10.0.1.5/32"
+  }
+}
 # ------------------------------------------------------------------------------
 # 5. NETWORK INTERFACES (NICs) & PUBLIC IPs
 # ------------------------------------------------------------------------------
